@@ -177,7 +177,7 @@ pub enum UseBraces {
   /// Forces no braces when the header is one line and body is one line. Otherwise forces braces.
   PreferNone,
   /// Only uses braces when syntactically required (empty blocks, declarations, multiple statements).
-  OnlyNeeded,
+  WhenNeeded,
   /// Uses braces when the formatted body spans multiple lines.
   WhenFormattedMultiLine,
 }
@@ -188,7 +188,7 @@ generate_str_to_from![
   [WhenNotSingleLine, "whenNotSingleLine"],
   [Always, "always"],
   [PreferNone, "preferNone"],
-  [OnlyNeeded, "onlyNeeded"],
+  [WhenNeeded, "whenNeeded"],
   [WhenFormattedMultiLine, "whenFormattedMultiLine"]
 ];
 

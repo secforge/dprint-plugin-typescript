@@ -5277,7 +5277,7 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
             use_braces: context.config.if_statement_use_braces,
             brace_position: context.config.if_statement_brace_position,
             single_body_position: Some(context.config.if_statement_single_body_position),
-            requires_braces_condition_ref: if context.config.if_statement_use_braces == UseBraces::OnlyNeeded {
+            requires_braces_condition_ref: if context.config.if_statement_use_braces == UseBraces::WhenNeeded {
               None
             } else {
               Some(result.open_brace_condition_ref)
@@ -8808,7 +8808,7 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
 
             Some(false)
           }
-          UseBraces::OnlyNeeded => Some(force_braces),
+          UseBraces::WhenNeeded => Some(force_braces),
           UseBraces::WhenFormattedMultiLine => {
             if force_braces {
               Some(true)

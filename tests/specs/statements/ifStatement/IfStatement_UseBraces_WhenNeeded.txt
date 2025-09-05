@@ -1,4 +1,4 @@
-~~ ifStatement.useBraces: onlyNeeded ~~
+~~ ifStatement.useBraces: whenNeeded ~~
 == should not add braces for single statement ==
 if (condition)
   doSomething();
