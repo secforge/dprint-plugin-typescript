@@ -5219,7 +5219,11 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
         ));
         items
       },
-      use_braces: context.config.if_statement_use_braces,
+      use_braces: if use_braces_for_then(cons, node.alt) {
+        UseBraces::Always
+      } else {
+        context.config.if_statement_use_braces
+      },
       brace_position: context.config.if_statement_brace_position,
       single_body_position: Some(context.config.if_statement_single_body_position),
       requires_braces_condition_ref: context.take_if_stmt_last_brace_condition_ref(),
@@ -8588,27 +8592,35 @@ fn gen_control_flow_separator(
 
       if token.is_some() && node_helpers::is_first_node_on_line(&token.unwrap().range(), context.program) {
         items.push_signal(Signal::NewLine);
+      } else if let Some(else_separator) = handle_else_after_brace_removal(token_text, token, previous_node_block, previous_close_brace_condition_ref, context)
+      {
+        items.extend(else_separator);
       } else {
-        // If braces are being removed, we need to check if the else should be positioned
-        // on a new line relative to the statement content (not the original brace position)
-        if let Some(previous_close_brace_condition_ref) = previous_close_brace_condition_ref {
-          items.push_condition(if_true_or(
-            "maintainElseNewLine",
-            Rc::new(move |condition_context| {
-              // If braces are NOT being used (were removed), put else on new line
-              // to maintain relative positioning to the statement content
-              Some(!condition_context.resolved_condition(&previous_close_brace_condition_ref)?)
-            }),
-            Signal::NewLine.into(),
-            " ".into(),
-          ));
-        } else {
-          items.push_space();
-        }
+        items.push_space();
       }
     }
   }
   items
+}
+
+fn handle_else_after_brace_removal(
+  token_text: &str,
+  token: Option<&TokenAndSpan>,
+  previous_node_block: &SourceRange,
+  _previous_close_brace_condition_ref: Option<ConditionReference>,
+  context: &mut Context,
+) -> Option<PrintItems> {
+  if token_text != "else" {
+    return None;
+  }
+  let full_text = SourceRange::new(previous_node_block.start, token?.range().start).text_fast(context.program);
+  let after_brace = &full_text[full_text.rfind('}')? + 1..];
+  if !after_brace.trim_end_matches("else").trim_end().is_empty() {
+    return None;
+  }
+  let mut items = PrintItems::new();
+  items.push_space();
+  Some(items)
 }
 
 struct GenHeaderWithConditionalBraceBodyOptions<'a> {
@@ -8643,7 +8655,10 @@ fn gen_header_with_conditional_brace_body<'a>(
   let result = gen_conditional_brace_body(
     GenConditionalBraceBodyOptions {
       body_node: opts.body_node.into(),
-      use_braces: if force_use_braces_for_stmt(opts.body_node) {
+      use_braces: if opts.use_braces != UseBraces::WhenNeeded
+        && opts.use_braces != UseBraces::WhenFormattedMultiLine
+        && force_use_braces_for_stmt(opts.body_node)
+      {
         UseBraces::Always
       } else {
         opts.use_braces
@@ -8688,6 +8703,34 @@ fn force_use_braces_for_stmt(stmt: Stmt) -> bool {
     | Stmt::While(_)
     | Stmt::With(_) => true,
     Stmt::Break(_) | Stmt::Continue(_) | Stmt::Debugger(_) | Stmt::Expr(_) | Stmt::Return(_) | Stmt::Throw(_) => false,
+  }
+}
+
+fn contains_dangling_if(stmt: Stmt) -> bool {
+  match stmt {
+    Stmt::If(if_stmt) => if_stmt.alt.map_or(true, |alt| contains_dangling_if(alt)),
+    Stmt::For(for_stmt) => contains_dangling_if(for_stmt.body),
+    Stmt::ForIn(for_in_stmt) => contains_dangling_if(for_in_stmt.body),
+    Stmt::ForOf(for_of_stmt) => contains_dangling_if(for_of_stmt.body),
+    Stmt::While(while_stmt) => contains_dangling_if(while_stmt.body),
+    Stmt::Block(block_stmt) => {
+      let non_empty_stmts: Vec<_> = block_stmt.stmts.iter().filter(|s| !matches!(s, Stmt::Empty(_))).collect();
+      non_empty_stmts.len() == 1 && contains_dangling_if(*non_empty_stmts[0])
+    }
+    Stmt::With(with_stmt) => contains_dangling_if(with_stmt.body),
+    Stmt::Labeled(labeled_stmt) => contains_dangling_if(labeled_stmt.body),
+    _ => false,
+  }
+}
+
+fn use_braces_for_then(then_node: Stmt, else_node: Option<Stmt>) -> bool {
+  match then_node {
+    Stmt::Block(block_stmt) => {
+      let non_empty_stmts: Vec<_> = block_stmt.stmts.iter().filter(|s| !matches!(s, Stmt::Empty(_))).collect();
+      non_empty_stmts.len() != 1 || use_braces_for_then(*non_empty_stmts[0], else_node)
+    }
+    Stmt::Decl(decl) => !matches!(decl, Decl::Fn(_)),
+    _ => else_node.is_some() && contains_dangling_if(then_node),
   }
 }
 
@@ -8761,6 +8804,7 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
   );
   let newline_condition_ref = newline_condition.create_reference();
   let force_braces = get_force_braces(opts.body_node);
+  let when_needed_use_braces = get_when_needed_use_braces(opts.body_node, force_braces);
   let mut open_brace_condition = if_true(
     "openBrace",
     {
@@ -8808,18 +8852,13 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
 
             Some(false)
           }
-          UseBraces::WhenNeeded => Some(force_braces),
-          UseBraces::WhenFormattedMultiLine => {
-            if force_braces {
-              Some(true)
-            } else {
-              Some(condition_helpers::is_multiple_lines(
-                condition_context,
-                end_header_ln.unwrap_or(start_lc.line),
-                end_ln,
-              )?)
-            }
-          }
+          UseBraces::WhenNeeded => Some(when_needed_use_braces),
+          UseBraces::WhenFormattedMultiLine =>
+            Some(force_braces ||condition_helpers::is_multiple_lines(
+              condition_context,
+              start_statements_lc.line,
+              end_statements_lc.line,
+            )?)
         }
       })
     },
@@ -9017,6 +9056,15 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
     } else {
       false
     }
+  }
+
+  fn get_when_needed_use_braces(body_node: Node, force_braces: bool) -> bool {
+    (force_braces
+      && !matches!(body_node, 
+      Node::BlockStmt(block_stmt) if block_stmt.stmts.len() == 1 && 
+      matches!(block_stmt.stmts[0], Stmt::Decl(Decl::Fn(_)))))
+      || matches!(body_node, Node::BlockStmt(block_stmt) 
+        if block_stmt.stmts.len() != 1 || block_stmt.stmts.iter().all(|s| s.kind() == NodeKind::EmptyStmt))
   }
 
   fn get_header_trailing_comments<'a>(body_node: Node<'a>, context: &mut Context<'a>) -> Vec<&'a Comment> {

@@ -69,10 +69,9 @@ if (condition1)
     doSomething();
 
 [expect]
-if (condition1) {
+if (condition1)
     if (condition2)
         doSomething();
-}
 
 == should add braces when syntactically required ==
 if (condition) {
@@ -82,8 +81,19 @@ if (condition) {
 }
 
 [expect]
-if (condition) {
+if (condition)
     function innerFunc() {
         return 42;
     }
-}
+
+== should add braces when syntactically required ==
+if (condition) {
+  if (true) f()
+} else
+  g();
+
+[expect]
+if (condition) {
+    if (true) f();
+} else
+    g();

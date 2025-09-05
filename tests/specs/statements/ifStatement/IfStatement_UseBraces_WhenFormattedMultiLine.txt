@@ -9,18 +9,16 @@ if (condition) doSomething();
 if (condition) doSomethingVeryLongThatExceedsTheLineWidth();
 
 [expect]
-if (condition) {
+if (condition)
     doSomethingVeryLongThatExceedsTheLineWidth();
-}
 
 == should add braces when condition itself is multi-line ==
 if (someVeryLongConditionThatExceedsWidth)
   doSomething();
 
 [expect]
-if (someVeryLongConditionThatExceedsWidth) {
+if (someVeryLongConditionThatExceedsWidth)
     doSomething();
-}
 
 == should handle if-else chain ==
 if (shortCondition) shortStatement();
@@ -72,3 +70,19 @@ else final();
 if (short) brief();
 else if (also) quick();
 else final();
+
+== should preserve single line when everything fits ==
+if (short) {
+  brief();
+} else if (also) {
+  quick();
+} else
+  final();
+
+[expect]
+if (short)
+    brief();
+else if (also)
+    quick();
+else
+    final();
