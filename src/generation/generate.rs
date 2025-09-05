@@ -2383,7 +2383,7 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
       items.push_sc(sc!(" ?"));
     }
     items.extend(question_comment_items.trailing_line);
-    if is_structural_mode && (!is_in_ternary(node.into()) || is_in_ternary_else_branch(node.into())) {
+    if is_structural_mode && no_conditional_or_alternate(node.into()) {
       items
     } else {
       ir_helpers::new_line_group(with_queued_indent(items))
@@ -2585,19 +2585,10 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
     }
   }
 
-  fn is_in_ternary(node: Node) -> bool {
-    if let Some(Node::CondExpr(_parent_conditional)) = node.parent() {
-      true
-    } else {
-      false
-    }
-  }
-
-  fn is_in_ternary_else_branch(node: Node) -> bool {
-    if let Some(Node::CondExpr(parent_conditional)) = node.parent() {
-      parent_conditional.alt.range() == node.range()
-    } else {
-      false
+  fn no_conditional_or_alternate(node: Node) -> bool {
+    match node.parent() {
+      Some(Node::CondExpr(parent_conditional)) => parent_conditional.alt.range() == node.range(),
+      _ => true,
     }
   }
 }
@@ -8598,7 +8589,7 @@ fn gen_control_flow_separator(
       if token.is_some() && node_helpers::is_first_node_on_line(&token.unwrap().range(), context.program) {
         items.push_signal(Signal::NewLine);
       } else {
-        // If braces are being removed, we need to check if the else should be positioned 
+        // If braces are being removed, we need to check if the else should be positioned
         // on a new line relative to the statement content (not the original brace position)
         if let Some(previous_close_brace_condition_ref) = previous_close_brace_condition_ref {
           items.push_condition(if_true_or(
