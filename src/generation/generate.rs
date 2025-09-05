@@ -2348,6 +2348,7 @@ fn gen_class_expr<'a>(node: &ClassExpr<'a>, context: &mut Context<'a>) -> PrintI
 }
 
 fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> PrintItems {
+  let is_structural_mode = context.config.conditional_expression_indent_style == TernaryIndentStyle::Structural;
   let question_token = context.token_finder.get_first_operator_after(&node.test, "?").unwrap();
   let colon_token = context.token_finder.get_first_operator_after(&node.cons, ":").unwrap();
   let line_per_expression = context.config.conditional_expression_line_per_expression;
@@ -2376,14 +2377,18 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
 
   let top_most_il = top_most_data.il;
 
-  items.extend(ir_helpers::new_line_group(with_queued_indent({
+  items.extend({
     let mut items = gen_node(node.test.into(), context);
     if question_position == OperatorPosition::SameLine {
       items.push_sc(sc!(" ?"));
     }
     items.extend(question_comment_items.trailing_line);
-    items
-  })));
+    if is_structural_mode && (!is_in_ternary(node.into()) || is_in_ternary_else_branch(node.into())) {
+      items
+    } else {
+      ir_helpers::new_line_group(with_queued_indent(items))
+    }
+  });
 
   items.extend(question_comment_items.previous_lines);
 
@@ -2416,19 +2421,39 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
       items
     });
 
-    items.push_condition({
-      let mut items = PrintItems::new();
-      items.extend(question_comment_items.leading_line);
-      if question_position == OperatorPosition::NextLine {
-        items.push_sc(sc!("? "));
-      }
-      items.extend(gen_node(node.cons.into(), context));
-      if colon_position == OperatorPosition::SameLine {
-        items.push_sc(sc!(" :"));
-      }
-      items.extend(colon_comment_items.trailing_line);
-      indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
-    });
+    if is_structural_mode {
+      items.extend({
+        let mut items = PrintItems::new();
+        items.extend(question_comment_items.leading_line);
+        if question_position == OperatorPosition::NextLine {
+          items.push_sc(sc!("? "));
+        }
+        if top_most_data.is_top_most {
+          items.extend(ir_helpers::new_line_group(with_queued_indent(gen_node(node.cons.into(), context))));
+        } else {
+          items.extend(gen_node(node.cons.into(), context));
+        }
+        if colon_position == OperatorPosition::SameLine {
+          items.push_sc(sc!(" :"));
+        }
+        items.extend(colon_comment_items.trailing_line);
+        items
+      });
+    } else {
+      items.push_condition({
+        let mut items = PrintItems::new();
+        items.extend(question_comment_items.leading_line);
+        if question_position == OperatorPosition::NextLine {
+          items.push_sc(sc!("? "));
+        }
+        items.extend(gen_node(node.cons.into(), context));
+        if colon_position == OperatorPosition::SameLine {
+          items.push_sc(sc!(" :"));
+        }
+        items.extend(colon_comment_items.trailing_line);
+        indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
+      });
+    }
 
     items.extend(colon_comment_items.previous_lines);
 
@@ -2443,16 +2468,29 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
       items.push_signal(Signal::SpaceOrNewLine);
     }
 
-    items.push_condition({
-      let mut items = PrintItems::new();
-      items.extend(colon_comment_items.leading_line);
-      if colon_position == OperatorPosition::NextLine {
-        items.push_sc(sc!(": "));
-      }
-      items.push_info(before_alternate_ln);
-      items.extend(gen_node(node.alt.into(), context));
-      indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
-    });
+    if is_structural_mode {
+      items.extend({
+        let mut items = PrintItems::new();
+        items.extend(colon_comment_items.leading_line);
+        if colon_position == OperatorPosition::NextLine {
+          items.push_sc(sc!(": "));
+        }
+        items.push_info(before_alternate_ln);
+        items.extend(ir_helpers::new_line_group(with_queued_indent(gen_node(node.alt.into(), context))));
+        items
+      });
+    } else {
+      items.push_condition({
+        let mut items = PrintItems::new();
+        items.extend(colon_comment_items.leading_line);
+        if colon_position == OperatorPosition::NextLine {
+          items.push_sc(sc!(": "));
+        }
+        items.push_info(before_alternate_ln);
+        items.extend(gen_node(node.alt.into(), context));
+        indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
+      });
+    }
     items.push_info(end_ln);
 
     if let Some(reevaluation) = multi_line_reevaluation {
@@ -2544,6 +2582,22 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
         get_maintain_position(node, node.test, question_token, context),
         get_maintain_position(node, node.cons, colon_token, context),
       ),
+    }
+  }
+
+  fn is_in_ternary(node: Node) -> bool {
+    if let Some(Node::CondExpr(_parent_conditional)) = node.parent() {
+      true
+    } else {
+      false
+    }
+  }
+
+  fn is_in_ternary_else_branch(node: Node) -> bool {
+    if let Some(Node::CondExpr(parent_conditional)) = node.parent() {
+      parent_conditional.alt.range() == node.range()
+    } else {
+      false
     }
   }
 }
@@ -5232,7 +5286,11 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
             use_braces: context.config.if_statement_use_braces,
             brace_position: context.config.if_statement_brace_position,
             single_body_position: Some(context.config.if_statement_single_body_position),
-            requires_braces_condition_ref: Some(result.open_brace_condition_ref),
+            requires_braces_condition_ref: if context.config.if_statement_use_braces == UseBraces::OnlyNeeded {
+              None
+            } else {
+              Some(result.open_brace_condition_ref)
+            },
             start_header_info: Some((start_else_header_ln, start_else_header_lsil)),
             end_header_info: None,
           },
@@ -8540,7 +8598,22 @@ fn gen_control_flow_separator(
       if token.is_some() && node_helpers::is_first_node_on_line(&token.unwrap().range(), context.program) {
         items.push_signal(Signal::NewLine);
       } else {
-        items.push_space();
+        // If braces are being removed, we need to check if the else should be positioned 
+        // on a new line relative to the statement content (not the original brace position)
+        if let Some(previous_close_brace_condition_ref) = previous_close_brace_condition_ref {
+          items.push_condition(if_true_or(
+            "maintainElseNewLine",
+            Rc::new(move |condition_context| {
+              // If braces are NOT being used (were removed), put else on new line
+              // to maintain relative positioning to the statement content
+              Some(!condition_context.resolved_condition(&previous_close_brace_condition_ref)?)
+            }),
+            Signal::NewLine.into(),
+            " ".into(),
+          ));
+        } else {
+          items.push_space();
+        }
       }
     }
   }
@@ -8743,6 +8816,18 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
             }
 
             Some(false)
+          }
+          UseBraces::OnlyNeeded => Some(force_braces),
+          UseBraces::WhenFormattedMultiLine => {
+            if force_braces {
+              Some(true)
+            } else {
+              Some(condition_helpers::is_multiple_lines(
+                condition_context,
+                end_header_ln.unwrap_or(start_lc.line),
+                end_ln,
+              )?)
+            }
           }
         }
       })
