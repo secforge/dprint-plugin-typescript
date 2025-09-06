@@ -4147,6 +4147,7 @@ fn gen_jsx_opening_element<'a>(node: &JSXOpeningElement<'a>, context: &mut Conte
       }
       SameOrNextLinePosition::NextLine => true,
       SameOrNextLinePosition::SameLine => false,
+      SameOrNextLinePosition::ForceNewLine => true,
     }
   }
 
@@ -5225,7 +5226,17 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
         context.config.if_statement_use_braces
       },
       brace_position: context.config.if_statement_brace_position,
-      single_body_position: Some(context.config.if_statement_single_body_position),
+      single_body_position: Some(
+        if node.alt.is_some()
+          && context.config.if_statement_single_body_position == SameOrNextLinePosition::ForceNewLine
+          && matches!(cons, Stmt::Block(_))
+          && context.config.if_statement_use_braces != UseBraces::WhenNeeded
+        {
+          SameOrNextLinePosition::Maintain
+        } else {
+          context.config.if_statement_single_body_position
+        },
+      ),
       requires_braces_condition_ref: context.take_if_stmt_last_brace_condition_ref(),
     },
     context,
@@ -5280,7 +5291,16 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
             body_node: alt.into(),
             use_braces: context.config.if_statement_use_braces,
             brace_position: context.config.if_statement_brace_position,
-            single_body_position: Some(context.config.if_statement_single_body_position),
+            single_body_position: Some(
+              if context.config.if_statement_single_body_position == SameOrNextLinePosition::ForceNewLine
+                && matches!(alt, Stmt::Block(_))
+                && context.config.if_statement_use_braces != UseBraces::WhenNeeded
+              {
+                SameOrNextLinePosition::Maintain
+              } else {
+                context.config.if_statement_single_body_position
+              },
+            ),
             requires_braces_condition_ref: if context.config.if_statement_use_braces == UseBraces::WhenNeeded {
               None
             } else {
@@ -8671,7 +8691,7 @@ fn gen_header_with_conditional_brace_body<'a>(
       body_node: opts.body_node.into(),
       use_braces: if opts.use_braces != UseBraces::WhenNeeded
         && opts.use_braces != UseBraces::WhenFormattedMultiLine
-        && force_use_braces_for_stmt(opts.body_node)
+        && get_use_braces_for_stmt(opts.body_node, true)
       {
         UseBraces::Always
       } else {
@@ -8694,29 +8714,45 @@ fn gen_header_with_conditional_brace_body<'a>(
   }
 }
 
-fn force_use_braces_for_stmt(stmt: Stmt) -> bool {
+fn get_use_braces_for_node(body_node: Node, preferred: bool) -> bool {
+  match body_node {
+    Node::BlockStmt(block) => {
+      let non_empty_stmts: Vec<_> = block.stmts.iter().filter(|s| s.kind() != NodeKind::EmptyStmt).collect();
+      non_empty_stmts.len() != 1 || get_use_braces_for_stmt(*non_empty_stmts[0], preferred)
+    }
+    Node::ExprStmt(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
+    Node::DoWhileStmt(_)
+    | Node::ForStmt(_)
+    | Node::ForInStmt(_)
+    | Node::ForOfStmt(_)
+    | Node::IfStmt(_)
+    | Node::LabeledStmt(_)
+    | Node::SwitchStmt(_)
+    | Node::TryStmt(_)
+    | Node::WhileStmt(_)
+    | Node::WithStmt(_) => preferred,
+    _ => false,
+  }
+}
+
+fn get_use_braces_for_stmt(stmt: Stmt, preferred: bool) -> bool {
   match stmt {
     Stmt::Block(block) => {
-      if block.stmts.len() != 1 {
-        true
-      } else {
-        force_use_braces_for_stmt(block.stmts[0])
-      }
+      let non_empty_stmts: Vec<_> = block.stmts.iter().filter(|s| s.kind() != NodeKind::EmptyStmt).collect();
+      non_empty_stmts.len() != 1 || get_use_braces_for_stmt(*non_empty_stmts[0], preferred)
     }
-    // force braces for any children where no braces could be ambiguous
-    Stmt::Empty(_)
-    | Stmt::DoWhile(_)
+    Stmt::Expr(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
+    Stmt::DoWhile(_)
     | Stmt::For(_)
     | Stmt::ForIn(_)
     | Stmt::ForOf(_)
-    | Stmt::Decl(_)
-    | Stmt::If(_) // especially force for this as it may cause a bug
+    | Stmt::If(_)
     | Stmt::Labeled(_)
     | Stmt::Switch(_)
     | Stmt::Try(_)
     | Stmt::While(_)
-    | Stmt::With(_) => true,
-    Stmt::Break(_) | Stmt::Continue(_) | Stmt::Debugger(_) | Stmt::Expr(_) | Stmt::Return(_) | Stmt::Throw(_) => false,
+    | Stmt::With(_) => preferred,
+    _ => false,
   }
 }
 
@@ -8818,7 +8854,7 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
   );
   let newline_condition_ref = newline_condition.create_reference();
   let force_braces = get_force_braces(opts.body_node);
-  let when_needed_use_braces = opts.use_braces == UseBraces::WhenNeeded && get_when_needed_use_braces(opts.body_node);
+  let when_needed_use_braces = opts.use_braces == UseBraces::WhenNeeded && get_use_braces_for_node(opts.body_node, false);
   let mut open_brace_condition = if_true(
     "openBrace",
     {
@@ -9020,11 +9056,11 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
           }
           return false;
         }
+        SameOrNextLinePosition::ForceNewLine => true,
       };
     } else {
       if let Node::BlockStmt(block_stmt) = body_node {
         if block_stmt.stmts.is_empty() {
-          // keep the block on the same line
           return block_stmt.start_line_fast(context.program) < block_stmt.end_line_fast(context.program);
         }
       }
@@ -9071,22 +9107,6 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
           Stmt::Expr(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
           _ => false,
         })
-  }
-
-  fn get_when_needed_use_braces(body_node: Node) -> bool {
-    let Node::BlockStmt(block_stmt) = body_node else {
-      return false;
-    };
-    let non_empty_stmts: Vec<_> = block_stmt.stmts.iter().filter(|s| s.kind() != NodeKind::EmptyStmt).collect();
-    if non_empty_stmts.len() != 1 {
-      return true;
-    }
-    match non_empty_stmts[0] {
-      Stmt::Decl(Decl::Fn(_)) => false,
-      Stmt::Decl(_) => true,
-      Stmt::Expr(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
-      _ => false,
-    }
   }
 
   fn get_header_trailing_comments<'a>(body_node: Node<'a>, context: &mut Context<'a>) -> Vec<&'a Comment> {

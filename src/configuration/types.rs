@@ -160,9 +160,11 @@ pub enum SameOrNextLinePosition {
   SameLine,
   /// Forces the expression to be on the next line.
   NextLine,
+  /// Forces non-braced statements to be on the next line.
+  ForceNewLine,
 }
 
-generate_str_to_from![SameOrNextLinePosition, [Maintain, "maintain"], [SameLine, "sameLine"], [NextLine, "nextLine"]];
+generate_str_to_from![SameOrNextLinePosition, [Maintain, "maintain"], [SameLine, "sameLine"], [NextLine, "nextLine"], [ForceNewLine, "forceNewLine"]];
 
 /// If braces should be used or not in certain scenarios.
 #[derive(Clone, PartialEq, Copy, Serialize, Deserialize)]
