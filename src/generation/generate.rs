@@ -8592,9 +8592,12 @@ fn gen_control_flow_separator(
 
       if token.is_some() && node_helpers::is_first_node_on_line(&token.unwrap().range(), context.program) {
         items.push_signal(Signal::NewLine);
-      } else if let Some(else_separator) = handle_else_after_brace_removal(token_text, token, previous_node_block, previous_close_brace_condition_ref, context)
-      {
-        items.extend(else_separator);
+      } else if token_text == "else" {
+        if let Some(else_separator) = handle_else_after_brace_removal(token, previous_node_block, previous_close_brace_condition_ref, context) {
+          items.extend(else_separator);
+        } else {
+          items.push_space();
+        }
       } else {
         items.push_space();
       }
@@ -8604,22 +8607,33 @@ fn gen_control_flow_separator(
 }
 
 fn handle_else_after_brace_removal(
-  token_text: &str,
   token: Option<&TokenAndSpan>,
   previous_node_block: &SourceRange,
-  _previous_close_brace_condition_ref: Option<ConditionReference>,
+  previous_close_brace_condition_ref: Option<ConditionReference>,
   context: &mut Context,
 ) -> Option<PrintItems> {
-  if token_text != "else" {
-    return None;
-  }
   let full_text = SourceRange::new(previous_node_block.start, token?.range().start).text_fast(context.program);
-  let after_brace = &full_text[full_text.rfind('}')? + 1..];
-  if !after_brace.trim_end_matches("else").trim_end().is_empty() {
+  if !full_text[full_text.rfind('}')? + 1..].trim().is_empty() {
     return None;
   }
+
+  let if_start_line = previous_node_block.start_line_fast(context.program);
+  let else_line = token?.range().start_line_fast(context.program);
+  if if_start_line == else_line {
+    return None;
+  }
+
   let mut items = PrintItems::new();
-  items.push_space();
+  if let Some(close_brace_ref) = previous_close_brace_condition_ref {
+    items.push_condition(if_true_or(
+      "elseSeparator",
+      Rc::new(move |condition_context| Some(condition_context.resolved_condition(&close_brace_ref)?)),
+      " ".into(),
+      Signal::NewLine.into(),
+    ));
+  } else {
+    items.push_signal(Signal::NewLine);
+  }
   Some(items)
 }
 
@@ -8708,7 +8722,7 @@ fn force_use_braces_for_stmt(stmt: Stmt) -> bool {
 
 fn contains_dangling_if(stmt: Stmt) -> bool {
   match stmt {
-    Stmt::If(if_stmt) => if_stmt.alt.map_or(true, |alt| contains_dangling_if(alt)),
+    Stmt::If(if_stmt) => if_stmt.alt.is_none(),
     Stmt::For(for_stmt) => contains_dangling_if(for_stmt.body),
     Stmt::ForIn(for_in_stmt) => contains_dangling_if(for_in_stmt.body),
     Stmt::ForOf(for_of_stmt) => contains_dangling_if(for_of_stmt.body),
@@ -8804,7 +8818,7 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
   );
   let newline_condition_ref = newline_condition.create_reference();
   let force_braces = get_force_braces(opts.body_node);
-  let when_needed_use_braces = get_when_needed_use_braces(opts.body_node, force_braces);
+  let when_needed_use_braces = opts.use_braces == UseBraces::WhenNeeded && get_when_needed_use_braces(opts.body_node);
   let mut open_brace_condition = if_true(
     "openBrace",
     {
@@ -8853,12 +8867,9 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
             Some(false)
           }
           UseBraces::WhenNeeded => Some(when_needed_use_braces),
-          UseBraces::WhenFormattedMultiLine =>
-            Some(force_braces ||condition_helpers::is_multiple_lines(
-              condition_context,
-              start_statements_lc.line,
-              end_statements_lc.line,
-            )?)
+          UseBraces::WhenFormattedMultiLine => {
+            Some(force_braces || condition_helpers::is_multiple_lines(condition_context, start_statements_lc.line, end_statements_lc.line)?)
+          }
         }
       })
     },
@@ -9049,22 +9060,33 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
   }
 
   fn get_force_braces(body_node: Node) -> bool {
-    if let Node::BlockStmt(body_node) = body_node {
-      body_node.stmts.is_empty()
-        || body_node.stmts.iter().all(|s| s.kind() == NodeKind::EmptyStmt)
-        || (body_node.stmts.len() == 1 && matches!(body_node.stmts[0], Stmt::Decl(_)))
-    } else {
-      false
-    }
+    let Node::BlockStmt(body_node) = body_node else {
+      return false;
+    };
+    let non_empty_stmts: Vec<_> = body_node.stmts.iter().filter(|s| s.kind() != NodeKind::EmptyStmt).collect();
+    non_empty_stmts.is_empty()
+      || (non_empty_stmts.len() == 1
+        && match non_empty_stmts[0] {
+          Stmt::Decl(_) => true,
+          Stmt::Expr(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
+          _ => false,
+        })
   }
 
-  fn get_when_needed_use_braces(body_node: Node, force_braces: bool) -> bool {
-    (force_braces
-      && !matches!(body_node, 
-      Node::BlockStmt(block_stmt) if block_stmt.stmts.len() == 1 && 
-      matches!(block_stmt.stmts[0], Stmt::Decl(Decl::Fn(_)))))
-      || matches!(body_node, Node::BlockStmt(block_stmt) 
-        if block_stmt.stmts.len() != 1 || block_stmt.stmts.iter().all(|s| s.kind() == NodeKind::EmptyStmt))
+  fn get_when_needed_use_braces(body_node: Node) -> bool {
+    let Node::BlockStmt(block_stmt) = body_node else {
+      return false;
+    };
+    let non_empty_stmts: Vec<_> = block_stmt.stmts.iter().filter(|s| s.kind() != NodeKind::EmptyStmt).collect();
+    if non_empty_stmts.len() != 1 {
+      return true;
+    }
+    match non_empty_stmts[0] {
+      Stmt::Decl(Decl::Fn(_)) => false,
+      Stmt::Decl(_) => true,
+      Stmt::Expr(expr_stmt) => matches!(expr_stmt.expr, Expr::Await(_)),
+      _ => false,
+    }
   }
 
   fn get_header_trailing_comments<'a>(body_node: Node<'a>, context: &mut Context<'a>) -> Vec<&'a Comment> {
