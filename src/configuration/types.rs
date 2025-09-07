@@ -119,9 +119,11 @@ pub enum NextControlFlowPosition {
   SameLine,
   /// Forces the next control flow to be on the next line.
   NextLine,
+  /// Forces the next control flow to be on the next line except when it appears after a closing brace.
+  NextLineExceptAfterBrace,
 }
 
-generate_str_to_from![NextControlFlowPosition, [Maintain, "maintain"], [SameLine, "sameLine"], [NextLine, "nextLine"]];
+generate_str_to_from![NextControlFlowPosition, [Maintain, "maintain"], [SameLine, "sameLine"], [NextLine, "nextLine"], [NextLineExceptAfterBrace, "nextLineExceptAfterBrace"]];
 
 /// Where to place the operator for expressions that span multiple lines.
 #[derive(Debug, Clone, PartialEq, Copy, Serialize, Deserialize)]
@@ -685,4 +687,7 @@ pub struct Configuration {
   pub tuple_type_space_around: bool,
   #[serde(rename = "whileStatement.spaceAround")]
   pub while_statement_space_around: bool,
+  /* expression parentheses */
+  #[serde(rename = "expressionStatement.forceParentheses")]
+  pub expression_statement_force_parentheses: bool,
 }

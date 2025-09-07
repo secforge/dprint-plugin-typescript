@@ -107,9 +107,9 @@ else
   doOtherThing();
 
 [expect]
-if (condition1) {
+if (condition1)
     await doSomething();
-} else
+else
     doOtherThing();
 
 == should handle async function expressions in if blocks ==
@@ -150,14 +150,14 @@ if (condition1) {
 } else
     doOtherThing();
 
-== should handle TypeScript type alias declarations ==
+== should handle declarations ==
 if (condition1) {
-  type LocalType = string | number;
+  const x = 1;
 } else
   doOtherThing();
 
 [expect]
 if (condition1) {
-    type LocalType = string | number;
+    const x = 1;
 } else
     doOtherThing();
