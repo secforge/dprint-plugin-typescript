@@ -4157,7 +4157,6 @@ fn gen_jsx_opening_element<'a>(node: &JSXOpeningElement<'a>, context: &mut Conte
       }
       SameOrNextLinePosition::NextLine => true,
       SameOrNextLinePosition::SameLine => false,
-      SameOrNextLinePosition::ForceNewLine => true,
     }
   }
 
@@ -5236,17 +5235,7 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
         context.config.if_statement_use_braces
       },
       brace_position: context.config.if_statement_brace_position,
-      single_body_position: Some(
-        if node.alt.is_some()
-          && context.config.if_statement_single_body_position == SameOrNextLinePosition::ForceNewLine
-          && matches!(cons, Stmt::Block(_))
-          && context.config.if_statement_use_braces != UseBraces::WhenNeeded
-        {
-          SameOrNextLinePosition::Maintain
-        } else {
-          context.config.if_statement_single_body_position
-        },
-      ),
+      single_body_position: Some(context.config.if_statement_single_body_position),
       requires_braces_condition_ref: context.take_if_stmt_last_brace_condition_ref(),
     },
     context,
@@ -5305,16 +5294,7 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
               context.config.if_statement_use_braces
             },
             brace_position: context.config.if_statement_brace_position,
-            single_body_position: Some(
-              if context.config.if_statement_single_body_position == SameOrNextLinePosition::ForceNewLine
-                && matches!(alt, Stmt::Block(_))
-                && context.config.if_statement_use_braces != UseBraces::WhenNeeded
-              {
-                SameOrNextLinePosition::Maintain
-              } else {
-                context.config.if_statement_single_body_position
-              },
-            ),
+            single_body_position: Some(context.config.if_statement_single_body_position),
             requires_braces_condition_ref: Some(result.open_brace_condition_ref),
             start_header_info: Some((start_else_header_ln, start_else_header_lsil)),
             end_header_info: None,
@@ -9094,7 +9074,6 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
           }
           return false;
         }
-        SameOrNextLinePosition::ForceNewLine => true,
       };
     } else {
       if let Node::BlockStmt(block_stmt) = body_node {
