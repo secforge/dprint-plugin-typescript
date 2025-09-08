@@ -49,7 +49,7 @@ impl SyncPluginHandler<Configuration> for TypeScriptPluginHandler {
       version: version.clone(),
       config_key: "typescript".to_string(),
       help_url: "https://dprint.dev/plugins/typescript".to_string(),
-      config_schema_url: "https://github.com/secforge/dprint-plugin-typescript/releases/download/0.95.11+sf.1/schema.json".to_string(),
+      config_schema_url: "https://github.com/secforge/dprint-plugin-typescript/releases/download/0.95.11+sf.2/schema.json".to_string(),
       update_url: None,
     }
   }
