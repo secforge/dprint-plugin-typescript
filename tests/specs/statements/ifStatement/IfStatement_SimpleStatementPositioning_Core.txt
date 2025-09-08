@@ -1,12 +1,12 @@
-~~ ifStatement.singleBodyPosition: forceNewLine, ifStatement.useBraces: maintain ~~
-== should force non-braced statements to new line with ForceNewLine ==
+~~ ifStatement.singleBodyPosition: nextLine, ifStatement.useBraces: maintain ~~
+== should force non-braced statements to new line with nextLine ==
 if (condition) statement();
 
 [expect]
 if (condition)
     statement();
 
-== should force else statements to new line with ForceNewLine ==
+== should force else statements to new line with nextLine ==
 if (condition) stmt1();
 else stmt2();
 
@@ -16,7 +16,7 @@ if (condition)
 else
     stmt2();
 
-== should not affect braced blocks with ForceNewLine (BracePosition controls) ==
+== should not affect braced blocks with nextLine (BracePosition controls) ==
 if (condition) {
     statement();
 }
@@ -26,7 +26,7 @@ if (condition) {
     statement();
 }
 
-== should not affect braced else blocks with ForceNewLine ==
+== should not affect braced else blocks with nextLine ==
 if (condition) {
     stmt1();
 } else {
@@ -40,7 +40,7 @@ if (condition) {
     stmt2();
 }
 
-== should handle mixed braced and non-braced with ForceNewLine ==
+== should handle mixed braced and non-braced with nextLine ==
 if (condition) {
     stmt1();
 } else stmt2();
@@ -51,7 +51,7 @@ if (condition) {
 } else
     stmt2();
 
-== should handle nested if statements with ForceNewLine ==
+== should handle nested if statements with nextLine ==
 if (condition1) if (condition2) statement();
 
 [expect]
@@ -60,14 +60,14 @@ if (condition1) {
         statement();
 }
 
-== should handle complex expressions with ForceNewLine ==
+== should handle complex expressions with nextLine ==
 if (condition) console.log("message");
 
 [expect]
 if (condition)
     console.log("message");
 
-== should handle return statements with ForceNewLine ==
+== should handle return statements with nextLine ==
 if (condition) return value;
 
 [expect]

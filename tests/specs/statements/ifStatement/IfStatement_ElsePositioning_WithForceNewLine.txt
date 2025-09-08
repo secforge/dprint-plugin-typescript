@@ -1,5 +1,5 @@
-~~ ifStatement.nextControlFlowPosition: nextLineExceptAfterBrace, ifStatement.useBraces: whenNotSingleLine, ifStatement.singleBodyPosition: forceNewLine ~~
-== should combine NextLineExceptAfterBrace with ForceNewLine ==
+~~ ifStatement.nextControlFlowPosition: nextLineExceptAfterBrace, ifStatement.useBraces: whenNotSingleLine, ifStatement.singleBodyPosition: nextLine ~~
+== should combine NextLineExceptAfterBrace with nextLine ==
 if (condition) doSomething(); else doOther();
 
 [expect]

@@ -1,4 +1,4 @@
-~~ ifStatement.singleBodyPosition: forceNewLine, ifStatement.useBraces: whenNeeded ~~
+~~ ifStatement.singleBodyPosition: nextLine, ifStatement.useBraces: whenNeeded ~~
 == should handle empty statements correctly ==
 if (condition) ;
 
@@ -22,7 +22,7 @@ if (condition)
 else
     doSecond();
 
-== should add braces when syntactically needed with ForceNewLine ==
+== should add braces when syntactically needed with nextLine ==
 if (condition) { const x = 1; }
 
 [expect]
@@ -30,14 +30,14 @@ if (condition) {
     const x = 1;
 }
 
-== should add braces for await expressions with ForceNewLine ==
+== should add braces for await expressions with nextLine ==
 if (condition) await doSomething();
 
 [expect]
 if (condition)
     await doSomething();
 
-== should not add braces for function declarations with ForceNewLine ==
+== should not add braces for function declarations with nextLine ==
 if (condition) function test() { return 1; }
 
 [expect]
@@ -59,7 +59,7 @@ if (condition1) {
 else
     await doAsync();
 
-== should handle dangling else with ForceNewLine - nested if with else ==
+== should handle dangling else with nextLine - nested if with else ==
 if (condition1) if (condition2) doSomething(); else doOther();
 
 [expect]
