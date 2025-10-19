@@ -48,9 +48,9 @@ impl SyncPluginHandler<Configuration> for TypeScriptPluginHandler {
       name: env!("CARGO_PKG_NAME").to_string(),
       version: version.clone(),
       config_key: "typescript".to_string(),
-      help_url: "https://dprint.dev/plugins/typescript".to_string(),
-      config_schema_url: "https://github.com/secforge/dprint-plugin-typescript/releases/download/0.95.11+sf.2/schema.json".to_string(),
-      update_url: None,
+      help_url: env!("CARGO_PKG_HOMEPAGE").to_string(),
+      config_schema_url: env!("DPRINT_SCHEMA_URL_TEMPLATE").replace("{VERSION}", &version),
+      update_url: Some(env!("DPRINT_UPDATE_URL").to_string()),
     }
   }
 
