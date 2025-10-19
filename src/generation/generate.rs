@@ -8759,6 +8759,7 @@ fn get_use_braces_for_stmt(stmt: Stmt, preferred: bool) -> bool {
     | Stmt::Try(_)
     | Stmt::While(_)
     | Stmt::With(_) => preferred,
+    Stmt::Decl(decl) => !matches!(decl, Decl::Fn(_)), // Declarations need braces except function declarations
     _ => false,
   }
 }
