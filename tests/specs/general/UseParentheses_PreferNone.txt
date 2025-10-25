@@ -1572,3 +1572,27 @@ return Object.keys(object).every(key => (keys as string[]).includes(key));
 
 [expect]
 return Object.keys(object).every(key => (keys as string[]).includes(key));
+
+== should keep parentheses around negation of in expression ==
+const onlyColor = computed(() => 'color' in props.colorData && !('word' in props.colorData));
+
+[expect]
+const onlyColor = computed(() => 'color' in props.colorData && !('word' in props.colorData));
+
+== should keep parentheses around negation of in expression with member access ==
+const onlyWord = computed(() => !('color' in props.colorData) && 'word' in props.colorData);
+
+[expect]
+const onlyWord = computed(() => !('color' in props.colorData) && 'word' in props.colorData);
+
+== should keep parentheses around identifier in ternary operator ==
+const errorTitle = computed(() => 'Fehler' + (anyErrors.value ? '' : '(leer)'));
+
+[expect]
+const errorTitle = computed(() => 'Fehler' + (anyErrors.value ? '' : '(leer)'));
+
+== should keep parentheses around complex arithmetic expression ==
+const duration = computed(() => (props.data.entries.flatMap(x => x.log[x.log.length - 1].t - x.log[0].t).reduce((a, b) => a + b) / 1000).toString());
+
+[expect]
+const duration = computed(() => (props.data.entries.flatMap(x => x.log[x.log.length - 1].t - x.log[0].t).reduce((a, b) => a + b) / 1000).toString());
