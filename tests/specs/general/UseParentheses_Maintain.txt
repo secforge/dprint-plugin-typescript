@@ -1562,3 +1562,27 @@ foo() as Bar;
 
 [expect]
 (class {})?.prop;
+
+== should retain parentheses with nested assignments in logical expression ==
+if (this.leaving && (distanceL2 = (dlx = this.leaving.x - x) ** 2 + (dly = this.leaving.y - y) ** 2) > this.far2) {}
+
+[expect]
+if (this.leaving && (distanceL2 = (dlx = this.leaving.x - x) ** 2 + (dly = this.leaving.y - y) ** 2) > this.far2) {}
+
+== should retain parentheses around type assertion with optional chaining ==
+expect((result as Payload).options?.debug).toBe(true);
+
+[expect]
+expect((result as Payload).options?.debug).toBe(true);
+
+== should retain parentheses around type assertion with optional chaining in assignment ==
+const errorCode = (event.target as IDBOpenDBRequest).error?.name || 'Unknown';
+
+[expect]
+const errorCode = (event.target as IDBOpenDBRequest).error?.name || "Unknown";
+
+== should retain parentheses around type assertion with method call ==
+return Object.keys(object).every(key => (keys as string[]).includes(key));
+
+[expect]
+return Object.keys(object).every(key => (keys as string[]).includes(key));
