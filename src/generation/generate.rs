@@ -3197,6 +3197,16 @@ fn should_skip_paren_expr<'a>(node: &'a ParenExpr<'a>, context: &Context<'a>) ->
       return false;
     }
 
+    // Keep parens for conditional expressions in binary context: (a ? b : c) + d
+    if matches!(node.expr, Expr::Cond(_)) && matches!(parent.kind(), NodeKind::BinExpr | NodeKind::MemberExpr | NodeKind::CallExpr | NodeKind::OptCall) {
+      return false;
+    }
+
+    // Keep parens for call expressions with complex chains: (arr.flatMap(...)).toString()
+    if matches!(node.expr, Expr::Call(_)) && matches!(parent.kind(), NodeKind::MemberExpr | NodeKind::OptChainExpr) {
+      return false;
+    }
+
     // All other parens can be removed
     return true;
   }
