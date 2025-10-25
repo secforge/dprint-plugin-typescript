@@ -3143,6 +3143,11 @@ fn should_skip_paren_expr<'a>(node: &'a ParenExpr<'a>, context: &Context<'a>) ->
 
     // Check if parens are needed for operator precedence in binary/logical expressions
     if let Node::BinExpr(parent_bin) = parent {
+      // Keep parens for assignment expressions in binary context: (a = b) && c
+      if matches!(node.expr, Expr::Assign(_) | Expr::Update(_)) {
+        return false;
+      }
+
       if let Expr::Bin(inner_bin) = node.expr {
         let parent_prec = get_precedence(&parent_bin.op());
         let inner_prec = get_precedence(&inner_bin.op());
@@ -3185,6 +3190,11 @@ fn should_skip_paren_expr<'a>(node: &'a ParenExpr<'a>, context: &Context<'a>) ->
       {
         return false;
       }
+    }
+
+    // Keep parens for type assertions followed by member/optional access: (expr as Type).member or (expr as Type)?.optional
+    if is_type_assertion(node.expr.kind()) && matches!(parent.kind(), NodeKind::MemberExpr | NodeKind::OptChainExpr) {
+      return false;
     }
 
     // All other parens can be removed
