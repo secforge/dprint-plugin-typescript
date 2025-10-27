@@ -14,6 +14,7 @@ use dprint_core::configuration::*;
 ///     .prefer_hanging(true)
 ///     .prefer_single_line(false)
 ///     .quote_style(QuoteStyle::PreferSingle)
+///     .use_parentheses(UseParentheses::PreferNone)
 ///     .next_control_flow_position(NextControlFlowPosition::SameLine)
 ///     .build();
 /// ```
@@ -58,7 +59,7 @@ impl ConfigurationBuilder {
       .comment_line_force_space_after_slashes(false)
       .construct_signature_space_after_new_keyword(true)
       .constructor_type_space_after_new_keyword(true)
-      .arrow_function_use_parentheses(UseParentheses::Force)
+      .arrow_function_use_parentheses(ArrowFunctionUseParentheses::Force)
       .new_line_kind(NewLineKind::LineFeed)
       .function_expression_space_after_function_keyword(true)
       .tagged_template_space_before_literal(false)
@@ -481,7 +482,7 @@ impl ConfigurationBuilder {
   /// Whether to use parentheses for arrow functions.
   ///
   /// Default: `UseParentheses::Maintain`
-  pub fn arrow_function_use_parentheses(&mut self, value: UseParentheses) -> &mut Self {
+  pub fn arrow_function_use_parentheses(&mut self, value: ArrowFunctionUseParentheses) -> &mut Self {
     self.insert("arrowFunction.useParentheses", value.to_string().into())
   }
 
@@ -1077,6 +1078,10 @@ impl ConfigurationBuilder {
     self.insert("whileStatement.spaceAround", value.into())
   }
 
+  pub fn use_parentheses(&mut self, value: UseParentheses) -> &mut Self {
+    self.insert("useParentheses", value.to_string().into())
+  }
+
   #[cfg(test)]
   pub(super) fn get_inner_config(&self) -> ConfigKeyMap {
     self.config.clone()
@@ -1119,7 +1124,8 @@ mod tests {
       .quote_props(QuoteProps::AsNeeded)
       .prefer_hanging(false)
       /* situational */
-      .arrow_function_use_parentheses(UseParentheses::Maintain)
+      .arrow_function_use_parentheses(ArrowFunctionUseParentheses::Maintain)
+      .use_parentheses(UseParentheses::PreferNone)
       .binary_expression_line_per_expression(false)
       .conditional_expression_line_per_expression(true)
       .member_expression_line_per_expression(false)
@@ -1297,7 +1303,7 @@ mod tests {
       .while_statement_space_around(true);
 
     let inner_config = config.get_inner_config();
-    assert_eq!(inner_config.len(), 182);
+    assert_eq!(inner_config.len(), 183);
     let diagnostics = resolve_config(inner_config, &Default::default()).diagnostics;
     assert_eq!(diagnostics.len(), 0);
   }
