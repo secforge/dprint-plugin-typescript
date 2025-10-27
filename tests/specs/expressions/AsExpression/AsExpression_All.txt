@@ -24,3 +24,17 @@ testingtesting()
     .find(p => p.testing) as
         | string
         | undefined;
+
+== should format type assertion on left side of assignment ==
+(obj.prop as unknown) = {
+  handler: (data: string) => {
+    processData(data);
+  }
+};
+
+[expect]
+(obj.prop as unknown) = {
+    handler: (data: string) => {
+        processData(data);
+    },
+};
