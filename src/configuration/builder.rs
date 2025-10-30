@@ -823,6 +823,10 @@ impl ConfigurationBuilder {
     self.insert("conditionalExpression.operatorPosition", value.to_string().into())
   }
 
+  pub fn conditional_expression_indent_style(&mut self, value: TernaryIndentStyle) -> &mut Self {
+    self.insert("conditionalExpression.indentStyle", value.to_string().into())
+  }
+
   pub fn conditional_type_operator_position(&mut self, value: OperatorPosition) -> &mut Self {
     self.insert("conditionalType.operatorPosition", value.to_string().into())
   }
@@ -1128,6 +1132,7 @@ mod tests {
       .use_parentheses(UseParentheses::PreferNone)
       .binary_expression_line_per_expression(false)
       .conditional_expression_line_per_expression(true)
+      .conditional_expression_indent_style(TernaryIndentStyle::Align)
       .member_expression_line_per_expression(false)
       .type_literal_separator_kind(SemiColonOrComma::Comma)
       .type_literal_separator_kind_single_line(SemiColonOrComma::Comma)
