@@ -5605,7 +5605,11 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
         ));
         items
       },
-      use_braces: context.config.if_statement_use_braces,
+      use_braces: if use_braces_for_then(cons, node.alt) {
+        UseBraces::Always
+      } else {
+        context.config.if_statement_use_braces
+      },
       brace_position: context.config.if_statement_brace_position,
       single_body_position: Some(context.config.if_statement_single_body_position),
       requires_braces_condition_ref: context.take_if_stmt_last_brace_condition_ref(),
@@ -5660,7 +5664,11 @@ fn gen_if_stmt<'a>(node: &IfStmt<'a>, context: &mut Context<'a>) -> PrintItems {
         gen_conditional_brace_body(
           GenConditionalBraceBodyOptions {
             body_node: alt.into(),
-            use_braces: context.config.if_statement_use_braces,
+            use_braces: if use_braces_for_else(alt) {
+              UseBraces::Always
+            } else {
+              context.config.if_statement_use_braces
+            },
             brace_position: context.config.if_statement_brace_position,
             single_body_position: Some(context.config.if_statement_single_body_position),
             requires_braces_condition_ref: Some(result.open_brace_condition_ref),
@@ -9168,7 +9176,10 @@ fn gen_header_with_conditional_brace_body<'a>(
   let result = gen_conditional_brace_body(
     GenConditionalBraceBodyOptions {
       body_node: opts.body_node.into(),
-      use_braces: if force_use_braces_for_stmt(opts.body_node) {
+      use_braces: if opts.use_braces != UseBraces::WhenNeeded
+        && opts.use_braces != UseBraces::WhenFormattedMultiLine
+        && get_use_braces_for_stmt(opts.body_node, false)
+      {
         UseBraces::Always
       } else {
         opts.use_braces
@@ -9190,29 +9201,95 @@ fn gen_header_with_conditional_brace_body<'a>(
   }
 }
 
-fn force_use_braces_for_stmt(stmt: Stmt) -> bool {
+/// Returns the single non-empty statement from an iterator of statements, if there is exactly one.
+/// Empty statements are automatically filtered out.
+fn single_non_empty_stmt<'a, I>(iter: I) -> Option<Stmt<'a>>
+where
+  I: IntoIterator<Item = &'a Stmt<'a>>,
+{
+  let mut non_empty = iter.into_iter().filter(|s| !matches!(s, Stmt::Empty(_)));
+  match (non_empty.next(), non_empty.next()) {
+    (Some(first), None) => Some(*first),
+    _ => None,
+  }
+}
+
+fn get_use_braces_for_node(body_node: Node, preferred: bool) -> bool {
+  match body_node {
+    Node::BlockStmt(block) => match single_non_empty_stmt(block.stmts) {
+      Some(stmt) => get_use_braces_for_stmt(stmt, preferred),
+      None => true,
+    },
+    Node::ExprStmt(expr_stmt) => preferred && matches!(expr_stmt.expr, Expr::Await(_)),
+    Node::DoWhileStmt(_)
+    | Node::ForStmt(_)
+    | Node::ForInStmt(_)
+    | Node::ForOfStmt(_)
+    | Node::IfStmt(_)
+    | Node::LabeledStmt(_)
+    | Node::SwitchStmt(_)
+    | Node::TryStmt(_)
+    | Node::WhileStmt(_)
+    | Node::WithStmt(_) => preferred,
+    _ => false,
+  }
+}
+
+fn get_use_braces_for_stmt(stmt: Stmt, preferred: bool) -> bool {
   match stmt {
-    Stmt::Block(block) => {
-      if block.stmts.len() != 1 {
-        true
-      } else {
-        force_use_braces_for_stmt(block.stmts[0])
-      }
-    }
-    // force braces for any children where no braces could be ambiguous
-    Stmt::Empty(_)
-    | Stmt::DoWhile(_)
+    Stmt::Block(block) => match single_non_empty_stmt(block.stmts) {
+      Some(stmt) => get_use_braces_for_stmt(stmt, preferred),
+      None => true,
+    },
+    Stmt::Expr(expr_stmt) => preferred && matches!(expr_stmt.expr, Expr::Await(_)),
+    Stmt::DoWhile(_)
     | Stmt::For(_)
     | Stmt::ForIn(_)
     | Stmt::ForOf(_)
-    | Stmt::Decl(_)
-    | Stmt::If(_) // especially force for this as it may cause a bug
+    | Stmt::If(_)
     | Stmt::Labeled(_)
     | Stmt::Switch(_)
     | Stmt::Try(_)
     | Stmt::While(_)
-    | Stmt::With(_) => true,
-    Stmt::Break(_) | Stmt::Continue(_) | Stmt::Debugger(_) | Stmt::Expr(_) | Stmt::Return(_) | Stmt::Throw(_) => false,
+    | Stmt::With(_) => preferred,
+    Stmt::Decl(_) => true,
+    _ => false,
+  }
+}
+
+fn contains_dangling_if(stmt: Stmt) -> bool {
+  match stmt {
+    Stmt::If(if_stmt) => if_stmt.alt.is_none(),
+    Stmt::For(for_stmt) => contains_dangling_if(for_stmt.body),
+    Stmt::ForIn(for_in_stmt) => contains_dangling_if(for_in_stmt.body),
+    Stmt::ForOf(for_of_stmt) => contains_dangling_if(for_of_stmt.body),
+    Stmt::While(while_stmt) => contains_dangling_if(while_stmt.body),
+    Stmt::Block(block_stmt) => single_non_empty_stmt(block_stmt.stmts).map_or(false, contains_dangling_if),
+    Stmt::With(with_stmt) => contains_dangling_if(with_stmt.body),
+    Stmt::Labeled(labeled_stmt) => contains_dangling_if(labeled_stmt.body),
+    _ => false,
+  }
+}
+
+fn use_braces_for_then(then_node: Stmt, else_node: Option<Stmt>) -> bool {
+  match then_node {
+    Stmt::Block(block_stmt) => match single_non_empty_stmt(block_stmt.stmts) {
+      Some(stmt) => use_braces_for_then(stmt, else_node),
+      None => true,
+    },
+    Stmt::Decl(_) => true,
+    _ => else_node.is_some() && contains_dangling_if(then_node),
+  }
+}
+
+fn use_braces_for_else(else_node: Stmt) -> bool {
+  match else_node {
+    Stmt::Block(block_stmt) => match single_non_empty_stmt(block_stmt.stmts) {
+      Some(stmt) => use_braces_for_else(stmt),
+      None => true,
+    },
+    Stmt::Decl(_) => true,
+    _ => false,
   }
 }
 
@@ -9240,6 +9317,7 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
   let start_header_lsil = opts.start_header_info.map(|v| v.1);
   let end_header_ln = opts.end_header_info;
   let requires_braces_condition = opts.requires_braces_condition_ref;
+  let prefer_single_line = context.config.prefer_single_line;
   let start_inner_text_lc = LineAndColumn::new("startInnerText");
   let start_statements_lc = LineAndColumn::new("startStatements");
   let end_statements_lc = LineAndColumn::new("endStatements");
@@ -9275,17 +9353,27 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
       if should_use_new_line {
         return Some(true);
       }
-      let end_header_ln = condition_context.resolved_line_number(end_header_ln?)?;
-      if end_header_ln < condition_context.writer_info.line_number {
-        return Some(true);
+
+      // Check if we have end_header_ln, if not fall back to checking from start
+      if let Some(end_header_ln_info) = end_header_ln {
+        let end_header_ln = condition_context.resolved_line_number(end_header_ln_info)?;
+        if end_header_ln < condition_context.writer_info.line_number {
+          return Some(true);
+        }
+        let resolved_end_statements_ln = condition_context.resolved_line_number(end_statements_lc.line)?;
+        Some(resolved_end_statements_ln > end_header_ln)
+      } else {
+        // No end header (e.g., for "else" keyword), check if statements span multiple lines
+        let resolved_start_statements_ln = condition_context.resolved_line_number(start_statements_lc.line)?;
+        let resolved_end_statements_ln = condition_context.resolved_line_number(end_statements_lc.line)?;
+        Some(resolved_end_statements_ln > resolved_start_statements_ln)
       }
-      let resolved_end_statements_ln = condition_context.resolved_line_number(end_statements_lc.line)?;
-      Some(resolved_end_statements_ln > end_header_ln)
     }),
     Signal::NewLine.into(),
   );
   let newline_condition_ref = newline_condition.create_reference();
   let force_braces = get_force_braces(opts.body_node);
+  let when_needed_use_braces = opts.use_braces == UseBraces::WhenNeeded && get_use_braces_for_node(opts.body_node, false);
   let mut open_brace_condition = if_true(
     "openBrace",
     {
@@ -9296,43 +9384,42 @@ fn gen_conditional_brace_body<'a>(opts: GenConditionalBraceBodyOptions<'a>, cont
           return Some(false);
         }
 
+        if force_braces {
+          return Some(true);
+        }
+
         match use_braces {
           UseBraces::WhenNotSingleLine => {
-            if force_braces {
-              Some(true)
-            } else {
-              let is_multiple_lines = condition_helpers::is_multiple_lines(condition_context, end_header_ln.unwrap_or(start_lc.line), end_ln)?;
-              Some(is_multiple_lines)
-            }
+            let is_multiple_lines = condition_helpers::is_multiple_lines(condition_context, end_header_ln.unwrap_or(start_lc.line), end_ln)?;
+            Some(is_multiple_lines)
           }
-          UseBraces::Maintain => Some(force_braces || has_open_brace_token),
+          UseBraces::Maintain => Some(has_open_brace_token),
           UseBraces::Always => Some(true),
           UseBraces::PreferNone => {
-            if force_braces || body_should_be_multi_line {
-              return Some(true);
-            }
-            if let Some(start_header_ln) = start_header_ln {
-              if let Some(end_header_ln) = end_header_ln {
-                let is_header_multiple_lines = condition_helpers::is_multiple_lines(condition_context, start_header_ln, end_header_ln)?;
-                if is_header_multiple_lines {
-                  return Some(true);
-                }
+            if let (Some(start_header_ln), Some(end_header_ln)) = (start_header_ln, end_header_ln) {
+              if condition_helpers::is_multiple_lines(condition_context, start_header_ln, end_header_ln)? {
+                return Some(true);
               }
             }
-            let is_statements_multiple_lines = condition_helpers::is_multiple_lines(condition_context, start_statements_lc.line, end_statements_lc.line)?;
-            if is_statements_multiple_lines {
+
+            if body_should_be_multi_line || condition_helpers::is_multiple_lines(condition_context, start_statements_lc.line, end_statements_lc.line)? {
               return Some(true);
             }
 
-            if let Some(requires_braces_condition) = &requires_braces_condition {
-              let requires_braces = condition_context.resolved_condition(requires_braces_condition)?;
-              if requires_braces {
+            if let Some(requires_braces_condition) = requires_braces_condition {
+              if !prefer_single_line && condition_context.resolved_condition(&requires_braces_condition)? {
                 return Some(true);
               }
             }
 
             Some(false)
           }
+          UseBraces::WhenNeeded => Some(when_needed_use_braces),
+          UseBraces::WhenFormattedMultiLine => Some(condition_helpers::is_multiple_lines(
+            condition_context,
+            start_statements_lc.line,
+            end_statements_lc.line,
+          )?),
         }
       })
     },

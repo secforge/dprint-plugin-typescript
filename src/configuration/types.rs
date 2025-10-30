@@ -184,6 +184,10 @@ pub enum UseBraces {
   Always,
   /// Forces no braces when the header is one line and body is one line. Otherwise forces braces.
   PreferNone,
+  /// Only uses braces when syntactically required (empty blocks, declarations, multiple statements).
+  WhenNeeded,
+  /// Uses braces when the formatted body spans multiple lines.
+  WhenFormattedMultiLine,
 }
 
 generate_str_to_from![
@@ -191,7 +195,9 @@ generate_str_to_from![
   [Maintain, "maintain"],
   [WhenNotSingleLine, "whenNotSingleLine"],
   [Always, "always"],
-  [PreferNone, "preferNone"]
+  [PreferNone, "preferNone"],
+  [WhenNeeded, "whenNeeded"],
+  [WhenFormattedMultiLine, "whenFormattedMultiLine"]
 ];
 
 /// Controls how parentheses are used around expressions.
@@ -363,6 +369,7 @@ pub struct Configuration {
   pub quote_props: QuoteProps,
   pub semi_colons: SemiColons,
   pub file_indent_level: u32,
+  pub prefer_single_line: bool,
   /* situational */
   #[serde(rename = "arrowFunction.useParentheses")]
   pub arrow_function_use_parentheses: ArrowFunctionUseParentheses,
