@@ -2163,3 +2163,15 @@ const a = new (await this._getB())()
 
 [expect]
 const a = new (await this._getB())();
+
+== should maintain parentheses around type assertions in binary expression (with parens) ==
+const x = (a as any as number) >= (b as any as number);
+
+[expect]
+const x = (a as any as number) >= (b as any as number);
+
+== should maintain parentheses around type assertions in binary expression (without parens) ==
+const x = a as any as number >= b as any as number;
+
+[expect]
+const x = a as any as number >= b as any as number;
