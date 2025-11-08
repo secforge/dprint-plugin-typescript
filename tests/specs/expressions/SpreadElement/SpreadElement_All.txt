@@ -3,3 +3,31 @@ const t = { ...obj };
 
 [expect]
 const t = { ...obj };
+
+== should format spread with conditional expression ==
+const o = {
+  ...(flag ? {} : {
+      key: {
+        value: flag || defaultValue
+      }
+    })
+};
+
+[expect]
+const o = {
+    ...(flag ? {} : {
+        key: {
+            value: flag || defaultValue,
+        },
+    }),
+};
+
+== should format spread with sequence expression ==
+const o = {
+  ...(a, b)
+};
+
+[expect]
+const o = {
+    ...(a, b),
+};
