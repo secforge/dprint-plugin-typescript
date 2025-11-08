@@ -2203,3 +2203,9 @@ const x = a as any as number >= b as any as number;
 
 [expect]
 const x = a as any as number >= b as any as number;
+
+== should remove outer parentheses with type assertion and member access ==
+(([] as X[])).f(g);
+
+[expect]
+([] as X[]).f(g);
