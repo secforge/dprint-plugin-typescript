@@ -2769,23 +2769,29 @@ fn should_add_parens_around_expr<'a>(node: Node<'a>, context: &Context<'a>) -> b
       }
       Node::CallExpr(call_expr) => {
         if !call_expr.callee.range().contains(&original_node.range()) {
-          // it's in an argument, so don't add parens
           return false;
+        }
+        if is_type_assertion(original_node.kind()) {
+          return context.config.use_parentheses != UseParentheses::Maintain;
         }
       }
       Node::OptCall(call_expr) => {
         if !call_expr.callee.range().contains(&original_node.range()) {
-          // it's in an argument, so don't add parens
           return false;
+        }
+        if is_type_assertion(original_node.kind()) {
+          return context.config.use_parentheses != UseParentheses::Maintain;
         }
       }
       Node::NewExpr(new_expr) => {
         if !new_expr.callee.range().contains(&original_node.range()) {
-          // it's in an argument, so don't add parens
           return false;
         }
       }
       Node::ExprStmt(_) => {
+        if is_type_assertion(original_node.kind()) {
+          return false;
+        }
         return context.config.use_parentheses != UseParentheses::Maintain
           && (context.config.use_parentheses == UseParentheses::Disambiguation
             || matches!(unwrap_assertion_node(original_node), Node::ObjectLit(_) | Node::FnExpr(_) | Node::ClassExpr(_)));
@@ -2793,6 +2799,9 @@ fn should_add_parens_around_expr<'a>(node: Node<'a>, context: &Context<'a>) -> b
       Node::MemberExpr(expr) => {
         if matches!(expr.prop, MemberProp::Computed(_)) && expr.prop.range().contains(&original_node.range()) {
           return false;
+        }
+        if is_type_assertion(original_node.kind()) && expr.obj.range().contains(&original_node.range()) {
+          return context.config.use_parentheses != UseParentheses::Maintain;
         }
       }
       Node::CondExpr(cond_expr) => {
@@ -3057,6 +3066,22 @@ fn should_skip_paren_expr<'a>(node: &'a ParenExpr<'a>, context: &Context<'a>) ->
   // keep for `(val as number)++` or `(<number>val)++` or `(val!)++`
   if parent.kind() == NodeKind::UpdateExpr && (is_type_assertion(node.expr.kind()) || expr_ends_with_non_null_assertion(&node.expr)) {
     return false;
+  }
+
+  // Remove parens around type assertions in binary expressions
+  if is_type_assertion(node.expr.kind()) && parent.kind() == NodeKind::BinExpr {
+    return context.config.use_parentheses != UseParentheses::Maintain;
+  }
+
+  // Keep parens around type assertions when accessed via member/optional chaining/calls
+  let mut inner_expr = node.expr;
+  while let Node::ParenExpr(paren) = inner_expr.as_node() {
+    inner_expr = paren.expr;
+  }
+  if is_type_assertion(inner_expr.kind()) {
+    if matches!(parent.kind(), NodeKind::MemberExpr | NodeKind::OptChainExpr | NodeKind::CallExpr | NodeKind::OptCall) {
+      return false;
+    }
   }
 
   // Remove parens when directly inside these parent types (unless JSXExprContainer has leading comments)

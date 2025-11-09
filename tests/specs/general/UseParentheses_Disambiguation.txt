@@ -2156,17 +2156,17 @@ const a = new (await this._getB())()
 [expect]
 const a = new (await this._getB())();
 
-== should keep parentheses around type assertions in binary expression (with parens) ==
+== should remove parentheses around type assertions in binary expression (with parens) ==
 const x = (a as any as number) >= (b as any as number);
 
 [expect]
-const x = (a as any as number) >= (b as any as number);
+const x = a as any as number >= b as any as number;
 
-== should keep parentheses around type assertions in binary expression (without parens) ==
+== should remove parentheses around type assertions in binary expression (without parens) ==
 const x = a as any as number >= b as any as number;
 
 [expect]
-const x = (a as any as number) >= (b as any as number);
+const x = a as any as number >= b as any as number;
 
 == should remove outer parentheses with type assertion and member access ==
 (([] as X[])).f(g);
