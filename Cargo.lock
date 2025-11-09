@@ -310,8 +310,6 @@ dependencies = [
 [[package]]
 name = "dprint-development"
 version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bc835c6195bc3bd68ccc71b86ccb33cc2e9253cfc875bc371acea1ff034268"
 dependencies = [
  "anyhow",
  "console",
