@@ -822,6 +822,10 @@ impl ConfigurationBuilder {
     self.insert("conditionalExpression.operatorPosition", value.to_string().into())
   }
 
+  pub fn conditional_expression_indent_style(&mut self, value: TernaryIndentStyle) -> &mut Self {
+    self.insert("conditionalExpression.indentStyle", value.to_string().into())
+  }
+
   pub fn conditional_type_operator_position(&mut self, value: OperatorPosition) -> &mut Self {
     self.insert("conditionalType.operatorPosition", value.to_string().into())
   }
@@ -1122,6 +1126,7 @@ mod tests {
       .arrow_function_use_parentheses(UseParentheses::Maintain)
       .binary_expression_line_per_expression(false)
       .conditional_expression_line_per_expression(true)
+      .conditional_expression_indent_style(TernaryIndentStyle::Align)
       .member_expression_line_per_expression(false)
       .type_literal_separator_kind(SemiColonOrComma::Comma)
       .type_literal_separator_kind_single_line(SemiColonOrComma::Comma)
@@ -1297,7 +1302,7 @@ mod tests {
       .while_statement_space_around(true);
 
     let inner_config = config.get_inner_config();
-    assert_eq!(inner_config.len(), 182);
+    assert_eq!(inner_config.len(), 183);
     let diagnostics = resolve_config(inner_config, &Default::default()).diagnostics;
     assert_eq!(diagnostics.len(), 0);
   }

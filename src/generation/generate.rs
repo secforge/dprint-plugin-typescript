@@ -2348,6 +2348,7 @@ fn gen_class_expr<'a>(node: &ClassExpr<'a>, context: &mut Context<'a>) -> PrintI
 }
 
 fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> PrintItems {
+  let is_structural_mode = context.config.conditional_expression_indent_style == TernaryIndentStyle::Structural;
   let question_token = context.token_finder.get_first_operator_after(&node.test, "?").unwrap();
   let colon_token = context.token_finder.get_first_operator_after(&node.cons, ":").unwrap();
   let line_per_expression = context.config.conditional_expression_line_per_expression;
@@ -2376,14 +2377,18 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
 
   let top_most_il = top_most_data.il;
 
-  items.extend(ir_helpers::new_line_group(with_queued_indent({
+  items.extend({
     let mut items = gen_node(node.test.into(), context);
     if question_position == OperatorPosition::SameLine {
       items.push_sc(sc!(" ?"));
     }
     items.extend(question_comment_items.trailing_line);
-    items
-  })));
+    if is_structural_mode && no_conditional_or_alternate(node.into()) {
+      items
+    } else {
+      ir_helpers::new_line_group(with_queued_indent(items))
+    }
+  });
 
   items.extend(question_comment_items.previous_lines);
 
@@ -2416,19 +2421,32 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
       items
     });
 
-    items.push_condition({
-      let mut items = PrintItems::new();
-      items.extend(question_comment_items.leading_line);
+    let cons_and_alt_section = {
+      let mut section_items = PrintItems::new();
+      section_items.extend(question_comment_items.leading_line);
       if question_position == OperatorPosition::NextLine {
-        items.push_sc(sc!("? "));
+        section_items.push_sc(sc!("? "));
       }
-      items.extend(gen_node(node.cons.into(), context));
+      let cons_items = if is_structural_mode && top_most_data.is_top_most {
+        ir_helpers::new_line_group(with_queued_indent(gen_node(node.cons.into(), context)))
+      } else {
+        gen_node(node.cons.into(), context)
+      };
+      section_items.extend(cons_items);
       if colon_position == OperatorPosition::SameLine {
-        items.push_sc(sc!(" :"));
+        section_items.push_sc(sc!(" :"));
       }
-      items.extend(colon_comment_items.trailing_line);
-      indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
-    });
+      section_items.extend(colon_comment_items.trailing_line);
+      section_items
+    };
+    if is_structural_mode {
+      items.extend(cons_and_alt_section);
+    } else {
+      items.push_condition(indent_if_sol_and_same_indent_as_top_most(
+        ir_helpers::new_line_group(cons_and_alt_section),
+        top_most_il,
+      ));
+    }
 
     items.extend(colon_comment_items.previous_lines);
 
@@ -2443,16 +2461,19 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
       items.push_signal(Signal::SpaceOrNewLine);
     }
 
-    items.push_condition({
-      let mut items = PrintItems::new();
-      items.extend(colon_comment_items.leading_line);
-      if colon_position == OperatorPosition::NextLine {
-        items.push_sc(sc!(": "));
-      }
-      items.push_info(before_alternate_ln);
-      items.extend(gen_node(node.alt.into(), context));
-      indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(items), top_most_il)
-    });
+    let mut alt_items = PrintItems::new();
+    alt_items.extend(colon_comment_items.leading_line);
+    if colon_position == OperatorPosition::NextLine {
+      alt_items.push_sc(sc!(": "));
+    }
+    alt_items.push_info(before_alternate_ln);
+    if is_structural_mode {
+      alt_items.extend(ir_helpers::new_line_group(with_queued_indent(gen_node(node.alt.into(), context))));
+      items.extend(alt_items);
+    } else {
+      alt_items.extend(gen_node(node.alt.into(), context));
+      items.push_condition(indent_if_sol_and_same_indent_as_top_most(ir_helpers::new_line_group(alt_items), top_most_il));
+    }
     items.push_info(end_ln);
 
     if let Some(reevaluation) = multi_line_reevaluation {
@@ -2476,20 +2497,40 @@ fn gen_conditional_expr<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> P
     is_top_most: bool,
   }
 
+  fn no_conditional_or_alternate(node: Node) -> bool {
+    match node.parent() {
+      Some(Node::CondExpr(parent_conditional)) => parent_conditional.alt.range() == node.range(),
+      _ => true,
+    }
+  }
+
   fn get_top_most_data<'a>(node: &CondExpr<'a>, context: &mut Context<'a>) -> TopMostData {
-    // The "top most" node in nested conditionals follows the ancestors up through
-    // the alternate expressions.
+    // The "top most" node in nested conditionals follows the ancestors up through the alternate expressions.
     let mut top_most_node = node;
 
+    // In structural mode, skip over wrapper nodes (parens, type assertions, etc.) to find the top-most conditional in the chain
+    let mut current_start = node.start();
+    let is_structural_mode = context.config.conditional_expression_indent_style == TernaryIndentStyle::Structural;
     for ancestor in context.parent_stack.iter() {
-      if let Node::CondExpr(parent) = ancestor {
-        if parent.alt.start() == top_most_node.start() {
-          top_most_node = parent;
-        } else {
-          break;
+      match ancestor {
+        node @ (Node::CondExpr(_) | Node::ParenExpr(_) | Node::TsAsExpr(_) | Node::TsSatisfiesExpr(_) | Node::TsNonNullExpr(_)) => {
+          let (outer_start, inner_start) = match node {
+            Node::CondExpr(parent) => (parent.start(), parent.alt.start()),
+            Node::ParenExpr(paren) if is_structural_mode => (paren.start(), paren.expr.start()),
+            Node::TsAsExpr(as_expr) if is_structural_mode => (as_expr.start(), as_expr.expr.start()),
+            Node::TsSatisfiesExpr(satisfies_expr) if is_structural_mode => (satisfies_expr.start(), satisfies_expr.expr.start()),
+            Node::TsNonNullExpr(non_null_expr) if is_structural_mode => (non_null_expr.start(), non_null_expr.expr.start()),
+            _ => break,
+          };
+          if inner_start != current_start {
+            break;
+          }
+          if let Node::CondExpr(parent) = node {
+            top_most_node = parent;
+          }
+          current_start = outer_start;
         }
-      } else {
-        break;
+        _ => break,
       }
     }
 
